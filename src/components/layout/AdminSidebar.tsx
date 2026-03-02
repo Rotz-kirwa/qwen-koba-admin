@@ -6,6 +6,8 @@ import {
   Headphones, Shield, Settings
 } from 'lucide-react';
 
+const BRAND_LOGO_URL = "https://www.dropbox.com/scl/fi/vciso5r8lrayj5emh92q6/kbl.jpg?rlkey=de8pnnrj5z7o7wk3q16k39slf&st=izkvyifm&raw=1";
+
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
   { icon: BarChart3, label: 'Analytics', path: '/admin/analytics' },
@@ -40,7 +42,7 @@ export default function AdminSidebar() {
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen overflow-y-auto">
       <div className="p-6 border-b border-gray-200">
         <img 
-          src="https://i.pinimg.com/736x/10/9e/e3/109ee385971d50218b28256a0073873c.jpg" 
+          src={BRAND_LOGO_URL}
           alt="Queen Koba" 
           className="w-full h-auto rounded-lg mb-2"
         />

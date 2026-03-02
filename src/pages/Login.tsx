@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { Eye, EyeOff } from 'lucide-react';
 
+const BRAND_LOGO_URL = "https://www.dropbox.com/scl/fi/vciso5r8lrayj5emh92q6/kbl.jpg?rlkey=de8pnnrj5z7o7wk3q16k39slf&st=izkvyifm&raw=1";
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +33,11 @@ export default function Login() {
     <div className="min-h-screen bg-[#FAF8F5] flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
+          <img
+            src={BRAND_LOGO_URL}
+            alt="Queen Koba Logo"
+            className="h-20 w-auto mx-auto mb-3 rounded-lg"
+          />
           <h1 className="text-4xl font-serif text-[#8B6F47] mb-2">Queen Koba</h1>
           <p className="text-gray-600">Admin Dashboard</p>
         </div>
