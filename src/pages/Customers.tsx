@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, Mail, MapPin, ShoppingBag, Users, TrendingUp, Eye, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useState } from 'react';
+import { formatNairobiDate } from '../lib/datetime';
+
+function formatKes(value: number | null | undefined) {
+  return `KSh ${(value || 0).toLocaleString()}`;
+}
 
 export default function Customers() {
   const [search, setSearch] = useState('');
@@ -51,7 +56,7 @@ export default function Customers() {
             <span className="text-sm text-gray-500">Total Revenue</span>
             <TrendingUp className="w-5 h-5 text-[#8B6F47]" />
           </div>
-          <p className="text-3xl font-bold text-[#8B6F47]">${totalRevenue.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-[#8B6F47]">{formatKes(totalRevenue)}</p>
         </div>
       </div>
 
@@ -122,10 +127,10 @@ export default function Customers() {
                       </div>
                     </td>
                     <td className="py-4 px-4 font-semibold">
-                      ${customer.total_spent?.toFixed(2) || '0.00'}
+                      {formatKes(customer.total_spent)}
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-500">
-                      {new Date(customer.created_at).toLocaleDateString()}
+                      {formatNairobiDate(customer.created_at)}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-end">
@@ -185,11 +190,11 @@ export default function Customers() {
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Total Spent</label>
-                  <p className="font-semibold text-[#8B6F47]">${viewingCustomer.total_spent?.toFixed(2) || '0.00'}</p>
+                  <p className="font-semibold text-[#8B6F47]">{formatKes(viewingCustomer.total_spent)}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Member Since</label>
-                  <p className="font-semibold">{new Date(viewingCustomer.created_at).toLocaleDateString()}</p>
+                  <p className="font-semibold">{formatNairobiDate(viewingCustomer.created_at)}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Role</label>

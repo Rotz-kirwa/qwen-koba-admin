@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Eye, Package, X, CheckCircle, Truck } from 'lucide-react';
 import { api } from '../lib/api';
 import { useState } from 'react';
+import { formatNairobiDate, formatNairobiDateTime } from '../lib/datetime';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -9,7 +10,10 @@ const statusColors: Record<string, string> = {
   shipped: 'bg-purple-100 text-purple-800',
   delivered: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
+  payment_failed: 'bg-red-100 text-red-800',
 };
+
+const formatKes = (amount?: number) => `KSh ${(amount || 0).toLocaleString()}`;
 
 export default function Orders() {
   const [search, setSearch] = useState('');
@@ -20,6 +24,7 @@ export default function Orders() {
   const { data, isLoading } = useQuery({
     queryKey: ['orders'],
     queryFn: api.getOrders,
+    refetchInterval: 10000,
   });
 
   const updateStatusMutation = useMutation({
@@ -33,7 +38,8 @@ export default function Orders() {
   const orders = data?.orders || [];
   const filteredOrders = orders.filter((o: any) => {
     const matchesSearch = o.order_id?.toLowerCase().includes(search.toLowerCase()) ||
-                         o.customer_email?.toLowerCase().includes(search.toLowerCase());
+                         o.customer_email?.toLowerCase().includes(search.toLowerCase()) ||
+                         o.customer_name?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || o.order_status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -44,7 +50,9 @@ export default function Orders() {
 
   const pendingOrders = orders.filter((o: any) => o.order_status === 'pending' || o.order_status === 'processing').length;
   // const completedOrders = orders.filter((o: any) => o.order_status === 'delivered').length;
-  const totalRevenue = orders.reduce((sum: number, o: any) => sum + (o.total_usd || 0), 0);
+  const totalRevenue = orders
+    .filter((o: any) => o.payment_status === 'paid')
+    .reduce((sum: number, o: any) => sum + (o.grand_total_kes || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -77,7 +85,7 @@ export default function Orders() {
             <span className="text-sm text-gray-500">Total Revenue</span>
             <CheckCircle className="w-5 h-5 text-green-600" />
           </div>
-          <p className="text-3xl font-bold text-green-600">${totalRevenue.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-green-600">{formatKes(totalRevenue)}</p>
         </div>
       </div>
 
@@ -104,6 +112,7 @@ export default function Orders() {
             <option value="shipped">Shipped</option>
             <option value="delivered">Delivered</option>
             <option value="cancelled">Cancelled</option>
+            <option value="payment_failed">Payment Failed</option>
           </select>
         </div>
 
@@ -128,10 +137,11 @@ export default function Orders() {
                   <tr key={order._id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-4 px-4 font-mono text-sm">{order.order_id}</td>
                     <td className="py-4 px-4">
-                      <div className="text-sm">{order.customer_email || 'N/A'}</div>
+                      <div className="text-sm font-medium">{order.customer_name || 'N/A'}</div>
+                      <div className="text-xs text-gray-500">{order.customer_email || 'N/A'}</div>
                     </td>
                     <td className="py-4 px-4">{order.items?.length || 0} items</td>
-                    <td className="py-4 px-4 font-semibold">${order.total_usd?.toFixed(2)}</td>
+                    <td className="py-4 px-4 font-semibold">{formatKes(order.grand_total_kes)}</td>
                     <td className="py-4 px-4">
                       <select
                         value={order.order_status || 'pending'}
@@ -143,10 +153,11 @@ export default function Orders() {
                         <option value="shipped">Shipped</option>
                         <option value="delivered">Delivered</option>
                         <option value="cancelled">Cancelled</option>
+                        <option value="payment_failed">Payment Failed</option>
                       </select>
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-500">
-                      {new Date(order.created_at).toLocaleDateString()}
+                      {formatNairobiDate(order.created_at)}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center justify-end gap-2">
@@ -184,7 +195,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Date</label>
-                  <p className="font-semibold">{new Date(viewingOrder.created_at).toLocaleString()}</p>
+                  <p className="font-semibold">{formatNairobiDateTime(viewingOrder.created_at)}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-500">Status</label>
@@ -193,6 +204,14 @@ export default function Orders() {
                 <div>
                   <label className="text-sm text-gray-500">Payment Status</label>
                   <p className="font-semibold capitalize">{viewingOrder.payment_status}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-500">Customer</label>
+                  <p className="font-semibold">{viewingOrder.customer_name || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-500">Payment Method</label>
+                  <p className="font-semibold capitalize">{viewingOrder.payment_method || 'N/A'}</p>
                 </div>
               </div>
 
@@ -205,16 +224,28 @@ export default function Orders() {
                         <p className="font-medium">{item.product_name}</p>
                         <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                       </div>
-                      <p className="font-semibold">${item.item_total?.toFixed(2)}</p>
+                      <p className="font-semibold">
+                        {formatKes(item.item_total_kes ?? item.item_total ?? 0)}
+                      </p>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="border-t pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold">Total</span>
-                  <span className="text-2xl font-bold text-[#8B6F47]">${viewingOrder.total_usd?.toFixed(2)}</span>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Subtotal</span>
+                    <span className="font-semibold">{formatKes(viewingOrder.subtotal_kes)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Shipping</span>
+                    <span className="font-semibold">{formatKes(viewingOrder.shipping_kes)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-semibold">Grand Total</span>
+                    <span className="text-2xl font-bold text-[#8B6F47]">{formatKes(viewingOrder.grand_total_kes)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -223,9 +254,43 @@ export default function Orders() {
                   <h3 className="font-semibold mb-2">Shipping Address</h3>
                   <div className="text-sm text-gray-600">
                     <p>{viewingOrder.shipping_address.name}</p>
+                    <p>{viewingOrder.shipping_address.email}</p>
                     <p>{viewingOrder.shipping_address.address}</p>
                     <p>{viewingOrder.shipping_address.city}, {viewingOrder.shipping_address.country}</p>
                     <p>{viewingOrder.shipping_address.phone}</p>
+                    <p>{viewingOrder.shipping_address.county} · {viewingOrder.shipping_address.delivery_point}</p>
+                    <p className="capitalize">{viewingOrder.shipping_address.delivery_method} · {viewingOrder.shipping_address.delivery_eta}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-2">Payment Details</h3>
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p>Method: <span className="font-medium capitalize">{viewingOrder.payment_method || 'N/A'}</span></p>
+                  <p>Status: <span className="font-medium capitalize">{viewingOrder.payment_status || 'N/A'}</span></p>
+                  {viewingOrder.payment_receipt && <p>Receipt: <span className="font-medium">{viewingOrder.payment_receipt}</span></p>}
+                  {viewingOrder.payment_details?.phone_number && <p>Phone: <span className="font-medium">{viewingOrder.payment_details.phone_number}</span></p>}
+                </div>
+              </div>
+
+              {viewingOrder.events?.length > 0 && (
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-2">Order Timeline</h3>
+                  <div className="space-y-3">
+                    {viewingOrder.events.slice().reverse().map((event: any, idx: number) => (
+                      <div key={`${event.created_at}-${idx}`} className="rounded-lg bg-gray-50 p-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="font-medium text-sm text-gray-900">{event.message}</p>
+                          <span className="text-xs uppercase tracking-[0.2em] text-gray-400">
+                            {event.category || event.type}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {formatNairobiDateTime(event.created_at)} · {event.actor || 'system'}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

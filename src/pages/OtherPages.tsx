@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2, Tag, Percent, Calendar, X, Star, CheckCircle, XCircle, MessageSquare, Shield, Edit, Lock, Bell, Database, Eye, EyeOff } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { formatNairobiDate, formatNairobiDateTime } from '../lib/datetime';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const getToken = () => localStorage.getItem('admin_token');
@@ -171,7 +173,7 @@ export function Promotions() {
                     {promo.uses} {promo.limit ? `/ ${promo.limit}` : ''}
                   </td>
                   <td className="py-4 px-4 text-sm">
-                    {promo.expires ? new Date(promo.expires).toLocaleDateString() : 'No expiry'}
+                    {promo.expires ? formatNairobiDate(promo.expires) : 'No expiry'}
                   </td>
                   <td className="py-4 px-4">
                     <button
@@ -462,7 +464,7 @@ export function Reviews() {
                       </div>
                       <span className="text-sm font-semibold">{review.customer_name}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(review.created_at).toLocaleDateString()}
+                        {formatNairobiDate(review.created_at)}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 mb-2">{review.comment}</p>
@@ -516,37 +518,34 @@ export function Reviews() {
 
 // Payments Page
 export function Payments() {
-  const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const formatKes = (amount?: number) => `KSh ${(amount || 0).toLocaleString()}`;
   const [filter, setFilter] = useState('all');
-
-  useEffect(() => {
-    fetchPayments();
-  }, []);
-
-  const fetchPayments = async () => {
-    try {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-payments'],
+    queryFn: async () => {
       const res = await fetch(`${API_URL}/admin/payments`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-      const data = await res.json();
-      setPayments(data.payments || []);
-      setLoading(false);
-    } catch (err) {
-      console.error('Failed to fetch payments:', err);
-      setLoading(false);
-    }
-  };
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error || payload?.message || 'Failed to fetch payments');
+      }
+      return payload;
+    },
+    refetchInterval: 10000,
+  });
+  const payments = data?.payments || [];
 
   const filteredPayments = payments.filter((p: any) => {
     if (filter === 'all') return true;
+    if (filter === 'pending') return ['pending', 'initiated'].includes(p.payment_status);
     return p.payment_status === filter;
   });
 
   const totalRevenue = payments
     .filter((p: any) => p.payment_status === 'paid')
     .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-  const pendingPayments = payments.filter((p: any) => p.payment_status === 'pending').length;
+  const pendingPayments = payments.filter((p: any) => ['pending', 'initiated'].includes(p.payment_status)).length;
   const completedPayments = payments.filter((p: any) => p.payment_status === 'paid').length;
 
   return (
@@ -562,7 +561,7 @@ export function Payments() {
             <span className="text-sm text-gray-500">Total Revenue</span>
             <CheckCircle className="w-5 h-5 text-green-600" />
           </div>
-          <p className="text-3xl font-bold text-green-600">${totalRevenue.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-green-600">{formatKes(totalRevenue)}</p>
         </div>
         
         <div className="admin-card p-6">
@@ -610,7 +609,7 @@ export function Payments() {
           </button>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="text-center py-12">Loading payments...</div>
         ) : filteredPayments.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No payments found</div>
@@ -624,6 +623,7 @@ export function Payments() {
                   <th className="text-left py-3 px-4 font-semibold text-sm">Amount</th>
                   <th className="text-left py-3 px-4 font-semibold text-sm">Method</th>
                   <th className="text-left py-3 px-4 font-semibold text-sm">Status</th>
+                  <th className="text-left py-3 px-4 font-semibold text-sm">Last Update</th>
                   <th className="text-left py-3 px-4 font-semibold text-sm">Date</th>
                   <th className="text-left py-3 px-4 font-semibold text-sm">Order ID</th>
                 </tr>
@@ -641,7 +641,10 @@ export function Payments() {
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <span className="font-semibold">${payment.amount?.toFixed(2)}</span>
+                      <div className="font-semibold">{formatKes(payment.amount_kes ?? payment.amount)}</div>
+                      <div className="text-xs text-gray-500">
+                        Subtotal {formatKes(payment.subtotal_kes)} · Shipping {formatKes(payment.shipping_kes)}
+                      </div>
                     </td>
                     <td className="py-4 px-4">
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full capitalize">
@@ -658,10 +661,19 @@ export function Payments() {
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-500">
-                      {new Date(payment.created_at).toLocaleString()}
+                      {payment.last_event?.message || 'Recorded'}
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-500">
+                      {formatNairobiDateTime(payment.created_at)}
                     </td>
                     <td className="py-4 px-4">
                       <span className="font-mono text-xs">{payment.order_id || 'N/A'}</span>
+                      {payment.payment_receipt && (
+                        <div className="text-xs text-gray-500 mt-1">Receipt: {payment.payment_receipt}</div>
+                      )}
+                      {payment.updated_at && (
+                        <div className="text-xs text-gray-500 mt-1">Updated: {formatNairobiDateTime(payment.updated_at)}</div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1383,7 +1395,7 @@ export function Support() {
                       </select>
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-500">
-                      {new Date(ticket.created_at).toLocaleDateString()}
+                      {formatNairobiDate(ticket.created_at)}
                     </td>
                     <td className="py-4 px-4">
                       <button
@@ -1442,7 +1454,7 @@ export function Support() {
                       <div key={idx} className="bg-blue-50 p-3 rounded">
                         <p className="text-sm text-gray-700">{r.message}</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {new Date(r.created_at).toLocaleString()} - Admin
+                          {formatNairobiDateTime(r.created_at)} - Admin
                         </p>
                       </div>
                     ))}

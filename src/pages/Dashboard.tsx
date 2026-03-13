@@ -2,6 +2,24 @@ import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, ShoppingBag, Users, Percent, AlertTriangle, Package } from 'lucide-react';
 import { api } from '../lib/api';
 
+function formatKes(value: number | null | undefined) {
+  return `KSh ${(value || 0).toLocaleString()}`;
+}
+
+function formatTrend(value: number | null | undefined) {
+  const amount = Number(value || 0);
+  if (amount > 0) return `+${amount}%`;
+  if (amount < 0) return `${amount}%`;
+  return "0%";
+}
+
+function getTrendDirection(value: number | null | undefined): 'up' | 'down' | 'flat' {
+  const amount = Number(value || 0);
+  if (amount > 0) return 'up';
+  if (amount < 0) return 'down';
+  return 'flat';
+}
+
 function KPICard({ title, value, change, icon: Icon, trend }: any) {
   return (
     <div className="admin-card p-6">
@@ -11,7 +29,7 @@ function KPICard({ title, value, change, icon: Icon, trend }: any) {
       </div>
       <div className="flex items-end justify-between">
         <p className="text-3xl font-bold text-gray-900">{value}</p>
-        <span className={`text-sm font-medium ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
+        <span className={`text-sm font-medium ${trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-600' : 'text-gray-500'}`}>
           {change}
         </span>
       </div>
@@ -39,31 +57,31 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Total Revenue"
-          value={`$${kpis?.total_revenue?.toLocaleString() || 0}`}
-          change="+12.5%"
+          value={formatKes(kpis?.total_revenue)}
+          change={formatTrend(kpis?.revenue_change)}
           icon={TrendingUp}
-          trend="up"
+          trend={getTrendDirection(kpis?.revenue_change)}
         />
         <KPICard
           title="Total Orders"
           value={kpis?.total_orders || 0}
-          change="+8.2%"
+          change={formatTrend(kpis?.orders_change)}
           icon={ShoppingBag}
-          trend="up"
+          trend={getTrendDirection(kpis?.orders_change)}
         />
         <KPICard
           title="Customers"
           value={kpis?.total_customers || 0}
-          change="+15.3%"
+          change={formatTrend(kpis?.customers_change)}
           icon={Users}
-          trend="up"
+          trend={getTrendDirection(kpis?.customers_change)}
         />
         <KPICard
           title="Conversion Rate"
           value={`${kpis?.conversion_rate || 0}%`}
-          change="-2.1%"
+          change={formatTrend(kpis?.conversion_change)}
           icon={Percent}
-          trend="down"
+          trend={getTrendDirection(kpis?.conversion_change)}
         />
       </div>
 
@@ -82,8 +100,10 @@ export default function Dashboard() {
             <Package className="w-5 h-5 text-red-500" />
             <h3 className="font-semibold">Expiring Soon</h3>
           </div>
-          <p className="text-3xl font-bold text-red-600">{kpis?.expiring_soon || 0}</p>
-          <p className="text-sm text-gray-500 mt-1">Batches expiring in 90 days</p>
+          <p className="text-3xl font-bold text-red-600">{kpis?.expiring_soon_tracked ? (kpis?.expiring_soon || 0) : 'N/A'}</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {kpis?.expiring_soon_tracked ? 'Batches expiring in 90 days' : 'Expiry tracking is not configured yet'}
+          </p>
         </div>
       </div>
     </div>
