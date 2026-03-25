@@ -1,0 +1,30 @@
+{
+  "name": "Queen Koba Admin",
+  "short_name": "Queen Koba",
+  "description": "Queen Koba Admin Dashboard for managing products, orders, customers, analytics, and operations.",
+  "theme_color": "#8B6F47",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png?v=20260325",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png?v=20260325",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png?v=20260325",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/queen-koba-logo.jpg?v=20260325",
+      "sizes": "736x736",
+      "type": "image/jpeg"
+    }
+  ]
+}
