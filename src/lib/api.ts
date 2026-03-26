@@ -48,6 +48,13 @@ export const api = {
     });
   },
 
+  loginWithGoogle: async (credential: string) => {
+    return request('/admin/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
+    });
+  },
+
   getDashboardKPIs: async () => {
     return request('/admin/dashboard/kpis');
   },

@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { api } from '../lib/api';
-import { decodeGoogleCredential, getAllowedGoogleEmails } from '../lib/googleAuth';
 
 interface AdminUser {
   _id: string;
@@ -46,26 +45,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, [persistSession]);
 
   const loginWithGoogle = useCallback(async (credential: string) => {
-    const payload = decodeGoogleCredential(credential);
-
-    if (!payload?.email || !payload.email_verified) {
-      throw new Error('A verified Google email is required to continue.');
-    }
-
-    const allowedEmails = getAllowedGoogleEmails();
-    if (allowedEmails.length > 0 && !allowedEmails.includes(payload.email.toLowerCase())) {
-      throw new Error('This Google account is not approved for admin access.');
-    }
-
-    const googleUser: AdminUser = {
-      _id: payload.sub || payload.email,
-      email: payload.email,
-      full_name: payload.name || payload.given_name || payload.email.split('@')[0],
-      role: 'super_admin',
-      permissions: ['read', 'write', 'manage', 'delete'],
-    };
-
-    persistSession(credential, googleUser);
+    const data = await api.loginWithGoogle(credential);
+    persistSession(data.token, data.user);
   }, [persistSession]);
 
   const logout = useCallback(() => {
