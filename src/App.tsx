@@ -6,10 +6,11 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
 import Products from './pages/Products';
+import Promotions from './pages/Promotions';
 import Orders from './pages/Orders';
 import Customers from './pages/Customers';
 import Inventory from './pages/Inventory';
-import { Promotions, Reviews, Payments, Shipping, Content, Support, Admins, Settings } from './pages/OtherPages';
+import { Reviews, Payments, Shipping, Content, Support, Admins, Settings } from './pages/OtherPages';
 
 const queryClient = new QueryClient();
 

@@ -108,4 +108,47 @@ export const api = {
     const query = new URLSearchParams(params).toString();
     return request(`/admin/customers${query ? `?${query}` : ''}`);
   },
+
+  getPromotions: async (params?: any) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/admin/promotions${query ? `?${query}` : ''}`);
+  },
+
+  getPromotion: async (id: string) => {
+    return request(`/admin/promotions/${id}`);
+  },
+
+  createPromotion: async (data: any) => {
+    return request('/admin/promotions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  updatePromotion: async (id: string, data: any) => {
+    return request(`/admin/promotions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  updatePromotionStatus: async (id: string, status: 'active' | 'inactive') => {
+    return request(`/admin/promotions/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  deletePromotion: async (id: string) => {
+    return request(`/admin/promotions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  generatePromotionCode: async (prefix: string, length = 8) => {
+    return request('/admin/promotions/generate-random', {
+      method: 'POST',
+      body: JSON.stringify({ prefix, length }),
+    });
+  },
 };
