@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { Eye, EyeOff } from 'lucide-react';
+import { getGoogleClientId, loadGoogleIdentityScript } from '../lib/googleAuth';
 
 const BRAND_LOGO_URL = "/queen-koba-logo.jpg";
 
@@ -11,8 +12,68 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAdminAuth();
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const { login, loginWithGoogle } = useAdminAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeGoogle = async () => {
+      try {
+        await loadGoogleIdentityScript();
+
+        if (cancelled || !window.google?.accounts?.id || !googleButtonRef.current) {
+          return;
+        }
+
+        window.google.accounts.id.initialize({
+          client_id: getGoogleClientId(),
+          callback: async ({ credential }) => {
+            setError('');
+            setGoogleLoading(true);
+
+            try {
+              await loginWithGoogle(credential);
+              navigate('/admin');
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Google sign-in failed';
+              setError(message);
+            } finally {
+              setGoogleLoading(false);
+            }
+          },
+          context: 'signin',
+          ux_mode: 'popup',
+        });
+
+        googleButtonRef.current.innerHTML = '';
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'rectangular',
+          logo_alignment: 'left',
+          width: 368,
+        });
+
+        setGoogleReady(true);
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Google sign-in failed to load';
+          setError(message);
+        }
+      }
+    };
+
+    void initializeGoogle();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loginWithGoogle, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +156,26 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
+
+          <div className="my-6 flex items-center gap-4">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400">or</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+
+          <div className="space-y-3">
+            <div
+              ref={googleButtonRef}
+              className={`min-h-[44px] flex items-center justify-center rounded-lg border border-gray-200 ${
+                googleReady ? 'bg-white' : 'bg-gray-50'
+              }`}
+            />
+            <p className="text-center text-xs text-gray-500">
+              {googleLoading
+                ? 'Completing Google sign-in...'
+                : 'Use your verified Google account to continue.'}
+            </p>
+          </div>
         </div>
       </div>
     </div>

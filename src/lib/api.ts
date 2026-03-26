@@ -2,6 +2,19 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getToken = () => localStorage.getItem('admin_token');
 
+const parseResponse = async (res: Response) => {
+  const raw = await res.text();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
 const request = async (endpoint: string, options: RequestInit = {}) => {
   const token = getToken();
   const headers: HeadersInit = {
@@ -15,10 +28,15 @@ const request = async (endpoint: string, options: RequestInit = {}) => {
     headers,
   });
 
-  const data = await res.json();
+  const data = await parseResponse(res);
   if (!res.ok) {
+    if (typeof data === 'string') {
+      throw new Error(data || 'Request failed');
+    }
+
     throw new Error(data?.error || data?.message || 'Request failed');
   }
+
   return data;
 };
 
