@@ -7,80 +7,240 @@ import { formatNairobiDate, formatNairobiDateTime } from '../lib/datetime';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const getToken = () => localStorage.getItem('admin_token');
 
+type PromotionRecord = {
+  _id: string;
+  id?: string;
+  code: string;
+  description?: string;
+  campaign_type?: string;
+  discount: number;
+  type: 'percentage' | 'fixed' | 'free_shipping';
+  status: 'active' | 'inactive';
+  uses: number;
+  limit?: number | null;
+  per_user_limit?: number | null;
+  min_order_amount?: number;
+  max_discount_amount?: number | null;
+  first_order_only?: boolean;
+  starts_at?: string | null;
+  expires?: string | null;
+};
+
+type PromotionFormState = {
+  code: string;
+  codePrefix: string;
+  name: string;
+  campaignType: string;
+  discountType: 'percentage' | 'fixed' | 'free_shipping';
+  discountValue: string;
+  usageLimit: string;
+  perUserLimit: string;
+  minOrderAmount: string;
+  maxDiscountAmount: string;
+  startsAt: string;
+  expires: string;
+  firstOrderOnly: boolean;
+  isActive: boolean;
+};
+
+const INITIAL_PROMO_FORM: PromotionFormState = {
+  code: '',
+  codePrefix: 'QK',
+  name: '',
+  campaignType: '',
+  discountType: 'percentage',
+  discountValue: '',
+  usageLimit: '',
+  perUserLimit: '',
+  minOrderAmount: '',
+  maxDiscountAmount: '',
+  startsAt: '',
+  expires: '',
+  firstOrderOnly: false,
+  isActive: true,
+};
+
+function sanitizePromoCode(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function buildPromoPrefix(source: string) {
+  const normalized = sanitizePromoCode(source);
+  return normalized.slice(0, 8) || 'QK';
+}
+
+async function getResponseError(res: Response, fallback: string) {
+  const raw = await res.text();
+  if (!raw) return fallback;
+
+  try {
+    const data = JSON.parse(raw);
+    return data?.error || data?.message || fallback;
+  } catch {
+    return raw;
+  }
+}
+
+function formatPromotionDiscount(promo: PromotionRecord) {
+  if (promo.type === 'free_shipping') return 'Free Shipping';
+  if (promo.type === 'fixed') return `KSh ${Number(promo.discount || 0).toLocaleString()}`;
+  return `${Number(promo.discount || 0).toLocaleString()}%`;
+}
+
 // Promotions Page
 export function Promotions() {
-  const [promotions, setPromotions] = useState([]);
+  const [promotions, setPromotions] = useState<PromotionRecord[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [newPromo, setNewPromo] = useState({
-    code: '',
-    discount: '',
-    type: 'percentage',
-    limit: '',
-    expires: '',
-  });
+  const [saving, setSaving] = useState(false);
+  const [generatingCode, setGeneratingCode] = useState(false);
+  const [pageError, setPageError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [promoForm, setPromoForm] = useState<PromotionFormState>(INITIAL_PROMO_FORM);
 
   useEffect(() => {
-    fetchPromotions();
+    void fetchPromotions();
   }, []);
 
   const fetchPromotions = async () => {
+    setLoading(true);
+    setPageError('');
+
     try {
       const res = await fetch(`${API_URL}/admin/promotions`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
+
+      if (!res.ok) {
+        throw new Error(await getResponseError(res, 'Failed to load promotions'));
+      }
+
       const data = await res.json();
       setPromotions(data.promotions || []);
-      setLoading(false);
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load promotions';
+      setPageError(message);
       console.error('Failed to fetch promotions:', err);
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleCreate = async () => {
+  const resetForm = () => {
+    setPromoForm(INITIAL_PROMO_FORM);
+    setFormError('');
+  };
+
+  const handleOpenModal = () => {
+    resetForm();
+    setShowModal(true);
+  };
+
+  const handleGenerateCode = async () => {
+    setGeneratingCode(true);
+    setFormError('');
+
     try {
-      const res = await fetch(`${API_URL}/admin/promotions`, {
+      const prefix = buildPromoPrefix(promoForm.codePrefix || promoForm.name || 'QK');
+      const res = await fetch(`${API_URL}/admin/promotions/generate-random`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify({
-          code: newPromo.code,
-          discount: Number(newPromo.discount),
-          type: newPromo.type,
-          limit: newPromo.limit ? Number(newPromo.limit) : null,
-          expires: newPromo.expires || null,
+          prefix,
+          length: 8,
         }),
       });
-      if (res.ok) {
-        fetchPromotions();
-        setShowModal(false);
-        setNewPromo({ code: '', discount: '', type: 'percentage', limit: '', expires: '' });
+
+      if (!res.ok) {
+        throw new Error(await getResponseError(res, 'Failed to generate promo code'));
       }
+
+      const data = await res.json();
+      setPromoForm((current) => ({
+        ...current,
+        code: sanitizePromoCode(data.code || ''),
+        codePrefix: prefix,
+      }));
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate promo code';
+      setFormError(message);
+    } finally {
+      setGeneratingCode(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    setSaving(true);
+    setFormError('');
+
+    try {
+      const payload = {
+        code: promoForm.code,
+        description: promoForm.name.trim(),
+        campaign_type: promoForm.campaignType.trim(),
+        discount_type: promoForm.discountType,
+        discount_value: promoForm.discountType === 'free_shipping' ? 0 : Number(promoForm.discountValue),
+        usage_limit: promoForm.usageLimit ? Number(promoForm.usageLimit) : null,
+        per_user_limit: promoForm.perUserLimit ? Number(promoForm.perUserLimit) : null,
+        min_order_amount: promoForm.minOrderAmount ? Number(promoForm.minOrderAmount) : 0,
+        max_discount_amount: promoForm.maxDiscountAmount ? Number(promoForm.maxDiscountAmount) : null,
+        starts_at: promoForm.startsAt || null,
+        expires: promoForm.expires || null,
+        first_order_only: promoForm.firstOrderOnly,
+        is_active: promoForm.isActive,
+      };
+
+      const res = await fetch(`${API_URL}/admin/promotions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(await getResponseError(res, 'Failed to create promotion'));
+      }
+
+      await fetchPromotions();
+      setShowModal(false);
+      resetForm();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create promotion';
+      setFormError(message);
       console.error('Failed to create promotion:', err);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
     if (confirm('Delete this promotion?')) {
       try {
-        await fetch(`${API_URL}/admin/promotions/${id}`, {
+        const res = await fetch(`${API_URL}/admin/promotions/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${getToken()}` },
         });
-        fetchPromotions();
+
+        if (!res.ok) {
+          throw new Error(await getResponseError(res, 'Failed to delete promotion'));
+        }
+
+        await fetchPromotions();
       } catch (err) {
         console.error('Failed to delete promotion:', err);
+        setPageError(err instanceof Error ? err.message : 'Failed to delete promotion');
       }
     }
   };
 
   const toggleStatus = async (id: string, currentStatus: string) => {
     try {
-      await fetch(`${API_URL}/admin/promotions/${id}/status`, {
+      const res = await fetch(`${API_URL}/admin/promotions/${id}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -90,21 +250,36 @@ export function Promotions() {
           status: currentStatus === 'active' ? 'inactive' : 'active',
         }),
       });
-      fetchPromotions();
+
+      if (!res.ok) {
+        throw new Error(await getResponseError(res, 'Failed to update promotion status'));
+      }
+
+      await fetchPromotions();
     } catch (err) {
       console.error('Failed to update status:', err);
+      setPageError(err instanceof Error ? err.message : 'Failed to update promotion status');
     }
   };
+
+  const activePromotions = promotions.filter((promo) => promo.status === 'active').length;
+  const totalUses = promotions.reduce((sum, promo) => sum + Number(promo.uses || 0), 0);
+  const expiringSoon = promotions.filter((promo) => {
+    if (!promo.expires) return false;
+    const expiresAt = new Date(promo.expires).getTime();
+    const inThirtyDays = Date.now() + 1000 * 60 * 60 * 24 * 30;
+    return expiresAt <= inThirtyDays;
+  }).length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-serif">Promotions & Discounts</h1>
-          <p className="text-gray-500 mt-1">Manage discount codes and campaigns</p>
+          <p className="mt-1 text-gray-500">Generate promo codes, name campaigns, and manage discount limits.</p>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
+        <button
+          onClick={handleOpenModal}
           className="admin-btn-primary flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -112,183 +287,337 @@ export function Promotions() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-gray-500">Active Promotions</span>
             <Tag className="w-5 h-5 text-green-600" />
           </div>
-          <p className="text-3xl font-bold">{promotions.filter((p: any) => p.status === 'active').length}</p>
+          <p className="text-3xl font-bold">{activePromotions}</p>
         </div>
-        
+
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-gray-500">Total Uses</span>
             <Percent className="w-5 h-5 text-blue-600" />
           </div>
-          <p className="text-3xl font-bold">{promotions.reduce((sum: number, p: any) => sum + (p.uses || 0), 0)}</p>
+          <p className="text-3xl font-bold">{totalUses}</p>
         </div>
-        
+
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-sm text-gray-500">Expiring Soon</span>
             <Calendar className="w-5 h-5 text-orange-600" />
           </div>
-          <p className="text-3xl font-bold">0</p>
+          <p className="text-3xl font-bold">{expiringSoon}</p>
         </div>
       </div>
 
       <div className="admin-card p-6">
+        {pageError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {pageError}
+          </div>
+        )}
+
         {loading ? (
-          <div className="text-center py-12">Loading promotions...</div>
+          <div className="py-12 text-center">Loading promotions...</div>
+        ) : promotions.length === 0 ? (
+          <div className="py-12 text-center text-gray-500">No promo codes yet. Create one to start marketing campaigns.</div>
         ) : (
           <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-semibold text-sm">Code</th>
-                <th className="text-left py-3 px-4 font-semibold text-sm">Discount</th>
-                <th className="text-left py-3 px-4 font-semibold text-sm">Type</th>
-                <th className="text-left py-3 px-4 font-semibold text-sm">Uses</th>
-                <th className="text-left py-3 px-4 font-semibold text-sm">Expires</th>
-                <th className="text-left py-3 px-4 font-semibold text-sm">Status</th>
-                <th className="text-right py-3 px-4 font-semibold text-sm">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {promotions.map((promo: any) => (
-                <tr key={promo._id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-4 px-4">
-                    <span className="font-mono font-semibold">{promo.code}</span>
-                  </td>
-                  <td className="py-4 px-4">
-                    {promo.type === 'free_shipping' ? 'Free Shipping' : `${promo.discount}%`}
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full capitalize">
-                      {promo.type.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4">
-                    {promo.uses} {promo.limit ? `/ ${promo.limit}` : ''}
-                  </td>
-                  <td className="py-4 px-4 text-sm">
-                    {promo.expires ? formatNairobiDate(promo.expires) : 'No expiry'}
-                  </td>
-                  <td className="py-4 px-4">
-                    <button
-                      onClick={() => toggleStatus(promo._id, promo.status)}
-                      className={`px-3 py-1 text-xs rounded-full ${
-                        promo.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {promo.status}
-                    </button>
-                  </td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => handleDelete(promo._id)}
-                        className="p-2 hover:bg-gray-100 rounded-lg"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
-                    </div>
-                  </td>
+            <table className="w-full min-w-[980px]">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Code</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Campaign Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Discount</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Usage Limits</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Validity</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {promotions.map((promo) => (
+                  <tr key={promo._id} className="border-b border-gray-100 align-top hover:bg-gray-50">
+                    <td className="px-4 py-4">
+                      <span className="font-mono font-semibold tracking-wide">{promo.code}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-gray-900">{promo.description || 'Untitled promotion'}</p>
+                      {promo.campaign_type && (
+                        <p className="mt-1 text-xs uppercase tracking-wide text-gray-500">{promo.campaign_type}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-gray-900">{formatPromotionDiscount(promo)}</p>
+                      {Number(promo.min_order_amount || 0) > 0 && (
+                        <p className="mt-1 text-xs text-gray-500">Min order: KSh {Number(promo.min_order_amount).toLocaleString()}</p>
+                      )}
+                      {promo.max_discount_amount !== null && promo.max_discount_amount !== undefined && promo.type === 'percentage' && (
+                        <p className="mt-1 text-xs text-gray-500">Cap: KSh {Number(promo.max_discount_amount).toLocaleString()}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-gray-900">
+                        {promo.uses}
+                        {promo.limit ? ` / ${promo.limit}` : ' uses'}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {promo.per_user_limit ? `${promo.per_user_limit} per customer` : 'Unlimited per customer'}
+                      </p>
+                      {promo.first_order_only && (
+                        <p className="mt-1 text-xs text-amber-700">First order only</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-sm">
+                      <p>{promo.starts_at ? `Starts ${formatNairobiDate(promo.starts_at)}` : 'Starts immediately'}</p>
+                      <p className="mt-1 text-gray-500">
+                        {promo.expires ? `Ends ${formatNairobiDate(promo.expires)}` : 'No expiry'}
+                      </p>
+                    </td>
+                    <td className="px-4 py-4">
+                      <button
+                        onClick={() => toggleStatus(promo._id, promo.status)}
+                        className={`rounded-full px-3 py-1 text-xs ${
+                          promo.status === 'active'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {promo.status}
+                      </button>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDelete(promo._id)}
+                          className="rounded-lg p-2 hover:bg-gray-100"
+                          aria-label={`Delete ${promo.code}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Create Promotion</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Create Promotion</h2>
+                <p className="mt-1 text-sm text-gray-500">Set the campaign name, generate a code, and control how many times it can be used.</p>
+              </div>
               <button onClick={() => setShowModal(false)}>
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <div className="space-y-4">
+
+            {formError && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {formError}
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium mb-1">Promo Code</label>
+                <label className="mb-1 block text-sm font-medium">Campaign Name</label>
                 <input
                   type="text"
-                  value={newPromo.code}
-                  onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg uppercase"
-                  placeholder="SUMMER20"
+                  value={promoForm.name}
+                  onChange={(e) => setPromoForm({ ...promoForm, name: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="March Glow Campaign"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium mb-1">Type</label>
+                <label className="mb-1 block text-sm font-medium">Campaign Tag</label>
+                <input
+                  type="text"
+                  value={promoForm.campaignType}
+                  onChange={(e) => setPromoForm({ ...promoForm, campaignType: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="welcome, influencer, holiday"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Promo Code</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={promoForm.code}
+                    onChange={(e) => setPromoForm({ ...promoForm, code: sanitizePromoCode(e.target.value) })}
+                    className="w-full rounded-lg border px-3 py-2 font-mono uppercase"
+                    placeholder="MARCHGLOW15"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGenerateCode}
+                    disabled={generatingCode}
+                    className="rounded-lg border border-[#8B6F47] px-4 py-2 text-sm font-medium text-[#8B6F47] hover:bg-[#8B6F47]/5 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {generatingCode ? 'Generating...' : 'Generate'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Code Prefix</label>
+                <input
+                  type="text"
+                  value={promoForm.codePrefix}
+                  onChange={(e) => setPromoForm({ ...promoForm, codePrefix: buildPromoPrefix(e.target.value) })}
+                  className="w-full rounded-lg border px-3 py-2 uppercase"
+                  placeholder="QK"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Discount Type</label>
                 <select
-                  value={newPromo.type}
-                  onChange={(e) => setNewPromo({ ...newPromo, type: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
+                  value={promoForm.discountType}
+                  onChange={(e) => setPromoForm({ ...promoForm, discountType: e.target.value as PromotionFormState['discountType'] })}
+                  className="w-full rounded-lg border px-3 py-2"
                 >
                   <option value="percentage">Percentage Discount</option>
-                  <option value="fixed">Fixed Amount</option>
+                  <option value="fixed">Fixed Amount Discount</option>
                   <option value="free_shipping">Free Shipping</option>
                 </select>
               </div>
-              
-              {newPromo.type !== 'free_shipping' && (
+
+              {promoForm.discountType !== 'free_shipping' ? (
                 <div>
-                  <label className="block text-sm font-medium mb-1">Discount Value</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    {promoForm.discountType === 'fixed' ? 'Discount Amount (KSh)' : 'Discount Percentage'}
+                  </label>
                   <input
                     type="number"
-                    value={newPromo.discount}
-                    onChange={(e) => setNewPromo({ ...newPromo, discount: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="10"
+                    min="0"
+                    value={promoForm.discountValue}
+                    onChange={(e) => setPromoForm({ ...promoForm, discountValue: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2"
+                    placeholder={promoForm.discountType === 'fixed' ? '500' : '15'}
                   />
                 </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500">
+                  Free shipping selected. No numeric discount value is needed.
+                </div>
               )}
-              
+
               <div>
-                <label className="block text-sm font-medium mb-1">Usage Limit (optional)</label>
+                <label className="mb-1 block text-sm font-medium">Total Usage Limit</label>
                 <input
                   type="number"
-                  value={newPromo.limit}
-                  onChange={(e) => setNewPromo({ ...newPromo, limit: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
+                  min="1"
+                  value={promoForm.usageLimit}
+                  onChange={(e) => setPromoForm({ ...promoForm, usageLimit: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
                   placeholder="100"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium mb-1">Expiry Date (optional)</label>
+                <label className="mb-1 block text-sm font-medium">Per Customer Limit</label>
                 <input
-                  type="date"
-                  value={newPromo.expires}
-                  onChange={(e) => setNewPromo({ ...newPromo, expires: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
+                  type="number"
+                  min="1"
+                  value={promoForm.perUserLimit}
+                  onChange={(e) => setPromoForm({ ...promoForm, perUserLimit: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="1"
                 />
               </div>
-              
-              <div className="flex gap-2 pt-4">
-                <button
-                  onClick={handleCreate}
-                  disabled={!newPromo.code || (newPromo.type !== 'free_shipping' && !newPromo.discount)}
-                  className="flex-1 bg-[#8B6F47] text-white py-2 rounded-lg hover:bg-[#6d5638] disabled:opacity-50"
-                >
-                  Create
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 border border-gray-300 py-2 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Minimum Order (KSh)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={promoForm.minOrderAmount}
+                  onChange={(e) => setPromoForm({ ...promoForm, minOrderAmount: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="1500"
+                />
               </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Max Discount Cap (KSh)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={promoForm.maxDiscountAmount}
+                  onChange={(e) => setPromoForm({ ...promoForm, maxDiscountAmount: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                  placeholder="1000"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Starts On</label>
+                <input
+                  type="date"
+                  value={promoForm.startsAt}
+                  onChange={(e) => setPromoForm({ ...promoForm, startsAt: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Expires On</label>
+                <input
+                  type="date"
+                  value={promoForm.expires}
+                  onChange={(e) => setPromoForm({ ...promoForm, expires: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={promoForm.firstOrderOnly}
+                  onChange={(e) => setPromoForm({ ...promoForm, firstOrderOnly: e.target.checked })}
+                />
+                First order only
+              </label>
+
+              <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={promoForm.isActive}
+                  onChange={(e) => setPromoForm({ ...promoForm, isActive: e.target.checked })}
+                />
+                Make this promo active immediately
+              </label>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={handleCreate}
+                disabled={!promoForm.name.trim() || !promoForm.code.trim() || (promoForm.discountType !== 'free_shipping' && !promoForm.discountValue) || saving}
+                className="flex-1 rounded-lg bg-[#8B6F47] py-2 text-white hover:bg-[#6d5638] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {saving ? 'Creating...' : 'Create Promotion'}
+              </button>
+              <button
+                onClick={() => setShowModal(false)}
+                className="flex-1 rounded-lg border border-gray-300 py-2 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
