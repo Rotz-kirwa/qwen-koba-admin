@@ -7,6 +7,7 @@ interface AdminUser {
   full_name: string;
   role: string;
   permissions: string[];
+  status?: string;
 }
 
 interface AdminAuthContextType {
@@ -19,25 +20,86 @@ interface AdminAuthContextType {
 }
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
+const ADMIN_TOKEN_KEY = 'admin_token';
+const ADMIN_USER_KEY = 'admin_user';
+
+const readStoredAdmin = () => {
+  const raw = localStorage.getItem(ADMIN_USER_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as AdminUser;
+  } catch {
+    localStorage.removeItem(ADMIN_USER_KEY);
+    return null;
+  }
+};
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   const persistSession = useCallback((token: string, nextUser: AdminUser) => {
-    localStorage.setItem('admin_token', token);
-    localStorage.setItem('admin_user', JSON.stringify(nextUser));
+    localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(nextUser));
     setUser(nextUser);
   }, []);
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    const userData = localStorage.getItem('admin_user');
-    if (token && userData) {
-      setUser(JSON.parse(userData));
-    }
-    setLoading(false);
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    localStorage.removeItem(ADMIN_USER_KEY);
+    window.google?.accounts?.id.disableAutoSelect();
+    setUser(null);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapSession = async () => {
+      const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+      const storedUser = readStoredAdmin();
+
+      if (!token) {
+        if (!cancelled) {
+          setUser(null);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (storedUser && !cancelled) {
+        setUser(storedUser);
+      }
+
+      try {
+        const response = await api.getCurrentAdmin();
+        if (!cancelled) {
+          const nextUser = response?.user as AdminUser | undefined;
+          if (!nextUser) {
+            throw new Error('Admin session response was missing the user');
+          }
+          localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(nextUser));
+          setUser(nextUser);
+        }
+      } catch {
+        if (!cancelled) {
+          clearSession();
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void bootstrapSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearSession]);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.login(email, password);
@@ -50,11 +112,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, [persistSession]);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_user');
-    window.google?.accounts?.id.disableAutoSelect();
-    setUser(null);
-  }, []);
+    clearSession();
+  }, [clearSession]);
 
   const hasPermission = useCallback((permission: string) => {
     if (!user) return false;

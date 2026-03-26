@@ -55,8 +55,16 @@ export const api = {
     });
   },
 
+  getCurrentAdmin: async () => {
+    return request('/admin/auth/me');
+  },
+
   getDashboardKPIs: async () => {
     return request('/admin/dashboard/kpis');
+  },
+
+  getAnalyticsOverview: async () => {
+    return request('/admin/analytics/overview');
   },
 
   getProducts: async (params?: any) => {
