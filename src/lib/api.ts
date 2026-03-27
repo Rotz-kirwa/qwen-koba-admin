@@ -2,6 +2,21 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getToken = () => localStorage.getItem('admin_token');
 
+const buildQueryString = (params?: Record<string, unknown>) => {
+  if (!params) return '';
+
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    searchParams.set(key, String(value));
+  });
+
+  return searchParams.toString();
+};
+
 const parseResponse = async (res: Response) => {
   const raw = await res.text();
   if (!raw) {
@@ -68,7 +83,7 @@ export const api = {
   },
 
   getProducts: async (params?: any) => {
-    const query = new URLSearchParams(params).toString();
+    const query = buildQueryString(params);
     return request(`/admin/products${query ? `?${query}` : ''}`);
   },
 
@@ -93,7 +108,7 @@ export const api = {
   },
 
   getOrders: async (params?: any) => {
-    const query = new URLSearchParams(params).toString();
+    const query = buildQueryString(params);
     return request(`/admin/orders${query ? `?${query}` : ''}`);
   },
 
@@ -105,12 +120,12 @@ export const api = {
   },
 
   getCustomers: async (params?: any) => {
-    const query = new URLSearchParams(params).toString();
+    const query = buildQueryString(params);
     return request(`/admin/customers${query ? `?${query}` : ''}`);
   },
 
   getPromotions: async (params?: any) => {
-    const query = new URLSearchParams(params).toString();
+    const query = buildQueryString(params);
     return request(`/admin/promotions${query ? `?${query}` : ''}`);
   },
 

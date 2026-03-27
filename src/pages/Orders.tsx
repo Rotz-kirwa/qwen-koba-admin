@@ -1,112 +1,261 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Eye, Package, X, CheckCircle, Truck } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  CheckCircle2,
+  CreditCard,
+  Eye,
+  MapPin,
+  Package,
+  Phone,
+  Search,
+  ShieldCheck,
+  Wallet,
+  X,
+} from 'lucide-react';
 import { api } from '../lib/api';
-import { useState } from 'react';
 import { formatNairobiDate, formatNairobiDateTime } from '../lib/datetime';
 
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  processing: 'bg-blue-100 text-blue-800',
-  shipped: 'bg-purple-100 text-purple-800',
-  delivered: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
-  payment_failed: 'bg-red-100 text-red-800',
+type OrderItem = {
+  product_name?: string;
+  quantity?: number;
+  item_total_kes?: number;
+  price_per_item_kes?: number;
 };
 
-const formatKes = (amount?: number) => `KSh ${(amount || 0).toLocaleString()}`;
+type AdminOrder = {
+  _id: string;
+  order_id: string;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
+  items?: OrderItem[];
+  payment_method?: string | null;
+  payment_status?: string | null;
+  payment_reference?: string | null;
+  payment_phone?: string | null;
+  paid_at?: string | null;
+  transaction_date?: string | null;
+  order_status?: string | null;
+  subtotal_kes?: number;
+  shipping_kes?: number;
+  discount_amount?: number;
+  shipping_discount?: number;
+  grand_total_kes?: number;
+  promo_code?: string | null;
+  delivery_zone?: string | null;
+  delivery_zone_code?: string | null;
+  county?: string | null;
+  area?: string | null;
+  delivery_point?: string | null;
+  delivery_method?: string | null;
+  delivery_eta?: string | null;
+  shipping_address?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    county?: string;
+    area?: string;
+    delivery_zone?: string;
+    delivery_zone_code?: string;
+    delivery_point?: string;
+    delivery_method?: string;
+    delivery_eta?: string;
+  };
+  payment_details?: {
+    phone_number?: string;
+    bank_name?: string;
+    type?: string;
+  };
+  events?: Array<{
+    created_at?: string;
+    actor?: string;
+    category?: string;
+    type?: string;
+    message?: string;
+  }>;
+  created_at: string;
+  updated_at?: string | null;
+};
+
+const formatKes = (amount?: number) => `KSh ${Number(amount || 0).toLocaleString()}`;
+
+const orderStatusColors: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800',
+  processing: 'bg-blue-100 text-blue-800',
+  shipped: 'bg-violet-100 text-violet-800',
+  delivered: 'bg-emerald-100 text-emerald-800',
+  cancelled: 'bg-rose-100 text-rose-800',
+  payment_failed: 'bg-rose-100 text-rose-800',
+};
+
+const paymentStatusColors: Record<string, string> = {
+  paid: 'bg-emerald-100 text-emerald-800',
+  initiated: 'bg-blue-100 text-blue-800',
+  pending: 'bg-amber-100 text-amber-800',
+  failed: 'bg-rose-100 text-rose-800',
+};
+
+const formatPaymentMethod = (value?: string | null) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return 'N/A';
+  if (normalized === 'mpesa') return 'M-Pesa';
+  if (normalized.includes('airtel')) return 'Airtel Money';
+  if (normalized.includes('card')) return 'Card Payment';
+  if (normalized.includes('bank')) return 'Bank Transfer';
+  return value as string;
+};
+
+const formatDeliveryMethod = (value?: string | null) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'door') return 'Door Delivery';
+  if (normalized === 'pickup') return 'Pickup Station';
+  return value || 'N/A';
+};
+
+const getItemCount = (items?: OrderItem[]) =>
+  (items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
 export default function Orders() {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [viewingOrder, setViewingOrder] = useState<any>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [deliveryZoneFilter, setDeliveryZoneFilter] = useState('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
+  const [viewingOrder, setViewingOrder] = useState<AdminOrder | null>(null);
   const queryClient = useQueryClient();
-  
-  const { data, isLoading } = useQuery({
-    queryKey: ['orders'],
-    queryFn: api.getOrders,
+
+  const queryParams = useMemo(
+    () => ({
+      search: search.trim() || undefined,
+      payment_status: paymentStatusFilter !== 'all' ? paymentStatusFilter : undefined,
+      delivery_zone: deliveryZoneFilter !== 'all' ? deliveryZoneFilter : undefined,
+      order_status: orderStatusFilter !== 'all' ? orderStatusFilter : undefined,
+      payment_method: paymentMethodFilter !== 'all' ? paymentMethodFilter : undefined,
+      limit: 200,
+    }),
+    [deliveryZoneFilter, orderStatusFilter, paymentMethodFilter, paymentStatusFilter, search],
+  );
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['orders', queryParams],
+    queryFn: () => api.getOrders(queryParams),
     refetchInterval: 10000,
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => 
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.updateOrderStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 
-  const orders = data?.orders || [];
-  const filteredOrders = orders.filter((o: any) => {
-    const matchesSearch = o.order_id?.toLowerCase().includes(search.toLowerCase()) ||
-                         o.customer_email?.toLowerCase().includes(search.toLowerCase()) ||
-                         o.customer_name?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || o.order_status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const orders = (data?.orders || []) as AdminOrder[];
+  const totalRevenue = orders
+    .filter((order) => order.payment_status === 'paid')
+    .reduce((sum, order) => sum + Number(order.grand_total_kes || 0), 0);
+  const paidOrders = orders.filter((order) => order.payment_status === 'paid').length;
+  const pendingPaymentOrders = orders.filter((order) =>
+    ['pending', 'initiated'].includes(String(order.payment_status || '').toLowerCase()),
+  ).length;
+  const processingOrders = orders.filter((order) =>
+    ['pending', 'processing', 'shipped'].includes(String(order.order_status || '').toLowerCase()),
+  ).length;
 
   const handleStatusUpdate = (orderId: string, status: string) => {
     updateStatusMutation.mutate({ id: orderId, status });
   };
 
-  const pendingOrders = orders.filter((o: any) => o.order_status === 'pending' || o.order_status === 'processing').length;
-  // const completedOrders = orders.filter((o: any) => o.order_status === 'delivered').length;
-  const totalRevenue = orders
-    .filter((o: any) => o.payment_status === 'paid')
-    .reduce((sum: number, o: any) => sum + (o.grand_total_kes || 0), 0);
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-serif text-gray-900">Orders</h1>
-          <p className="text-gray-500 mt-1">Manage customer orders</p>
+          <p className="mt-1 text-gray-500">
+            Track paid orders, delivery details, and customer contact information in one place.
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-500">Total Orders</span>
-            <Package className="w-5 h-5 text-blue-600" />
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm text-gray-500">Orders Shown</span>
+            <Package className="h-5 w-5 text-blue-600" />
           </div>
-          <p className="text-3xl font-bold">{orders.length}</p>
+          <p className="text-3xl font-bold text-gray-900">{orders.length}</p>
         </div>
-        
+
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-500">Pending</span>
-            <Truck className="w-5 h-5 text-yellow-600" />
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm text-gray-500">Paid Orders</span>
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
           </div>
-          <p className="text-3xl font-bold text-yellow-600">{pendingOrders}</p>
+          <p className="text-3xl font-bold text-emerald-600">{paidOrders}</p>
         </div>
-        
+
         <div className="admin-card p-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-500">Total Revenue</span>
-            <CheckCircle className="w-5 h-5 text-green-600" />
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm text-gray-500">Pending Payment</span>
+            <Wallet className="h-5 w-5 text-amber-600" />
           </div>
-          <p className="text-3xl font-bold text-green-600">{formatKes(totalRevenue)}</p>
+          <p className="text-3xl font-bold text-amber-600">{pendingPaymentOrders}</p>
+        </div>
+
+        <div className="admin-card p-6">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm text-gray-500">Revenue</span>
+            <ShieldCheck className="h-5 w-5 text-[#8B6F47]" />
+          </div>
+          <p className="text-3xl font-bold text-[#8B6F47]">{formatKes(totalRevenue)}</p>
         </div>
       </div>
 
       <div className="admin-card p-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.4fr_repeat(4,minmax(0,1fr))]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by order ID or email..."
+              placeholder="Search by order ID, name, phone, email, or payment reference..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+              className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
             />
           </div>
+
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+            value={paymentStatusFilter}
+            onChange={(e) => setPaymentStatusFilter(e.target.value)}
+            className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
           >
-            <option value="all">All Status</option>
+            <option value="all">All Payment States</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="pending">Pending</option>
+            <option value="initiated">Initiated</option>
+            <option value="failed">Failed</option>
+          </select>
+
+          <select
+            value={deliveryZoneFilter}
+            onChange={(e) => setDeliveryZoneFilter(e.target.value)}
+            className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+          >
+            <option value="all">All Delivery Zones</option>
+            <option value="nairobi">Within Nairobi</option>
+            <option value="outside_nairobi">Outside Nairobi</option>
+          </select>
+
+          <select
+            value={orderStatusFilter}
+            onChange={(e) => setOrderStatusFilter(e.target.value)}
+            className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+          >
+            <option value="all">All Order Status</option>
             <option value="pending">Pending</option>
             <option value="processing">Processing</option>
             <option value="shipped">Shipped</option>
@@ -114,39 +263,129 @@ export default function Orders() {
             <option value="cancelled">Cancelled</option>
             <option value="payment_failed">Payment Failed</option>
           </select>
+
+          <select
+            value={paymentMethodFilter}
+            onChange={(e) => setPaymentMethodFilter(e.target.value)}
+            className="rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8B6F47]"
+          >
+            <option value="all">All Payment Methods</option>
+            <option value="mpesa">M-Pesa</option>
+            <option value="card">Card</option>
+            <option value="airtel">Airtel Money</option>
+            <option value="airtel_money">Airtel Money</option>
+            <option value="bank_transfer">Bank Transfer</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="admin-card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Order Records</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Successful payments, delivery details, and customer contacts are saved here.
+            </p>
+          </div>
+          <div className="text-sm text-gray-500">
+            {processingOrders} active fulfillment item{processingOrders === 1 ? '' : 's'}
+          </div>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12">Loading orders...</div>
+          <div className="py-12 text-center text-gray-500">Loading orders...</div>
+        ) : error ? (
+          <div className="px-6 py-12 text-center text-red-600">
+            {error instanceof Error ? error.message : 'Failed to load orders'}
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="px-6 py-12 text-center text-gray-500">
+            No orders match the current filters.
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Order ID</th>
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Customer</th>
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Items</th>
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Total</th>
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Status</th>
-                  <th className="text-left py-3 px-4 font-semibold text-sm">Date</th>
-                  <th className="text-right py-3 px-4 font-semibold text-sm">Actions</th>
+            <table className="w-full min-w-[1100px]">
+              <thead className="bg-gray-50/70">
+                <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-[0.18em] text-gray-500">
+                  <th className="px-6 py-4 font-semibold">Order</th>
+                  <th className="px-4 py-4 font-semibold">Customer</th>
+                  <th className="px-4 py-4 font-semibold">Delivery</th>
+                  <th className="px-4 py-4 font-semibold">Payment</th>
+                  <th className="px-4 py-4 font-semibold">Total</th>
+                  <th className="px-4 py-4 font-semibold">Status</th>
+                  <th className="px-4 py-4 font-semibold">Created</th>
+                  <th className="px-6 py-4 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order: any) => (
-                  <tr key={order._id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-4 px-4 font-mono text-sm">{order.order_id}</td>
-                    <td className="py-4 px-4">
-                      <div className="text-sm font-medium">{order.customer_name || 'N/A'}</div>
-                      <div className="text-xs text-gray-500">{order.customer_email || 'N/A'}</div>
+                {orders.map((order) => (
+                  <tr key={order._id} className="border-b border-gray-100 align-top hover:bg-gray-50/60">
+                    <td className="px-6 py-5">
+                      <p className="font-mono text-sm font-semibold text-gray-900">{order.order_id}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {getItemCount(order.items)} item{getItemCount(order.items) === 1 ? '' : 's'}
+                      </p>
+                      {order.promo_code && (
+                        <p className="mt-2 inline-flex rounded-full bg-[#F6F0E4] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[#8B6F47]">
+                          Promo {order.promo_code}
+                        </p>
+                      )}
                     </td>
-                    <td className="py-4 px-4">{order.items?.length || 0} items</td>
-                    <td className="py-4 px-4 font-semibold">{formatKes(order.grand_total_kes)}</td>
-                    <td className="py-4 px-4">
+
+                    <td className="px-4 py-5">
+                      <p className="font-semibold text-gray-900">{order.customer_name || 'N/A'}</p>
+                      <p className="mt-1 text-sm text-gray-500">{order.customer_phone || 'No phone'}</p>
+                      <p className="mt-1 text-sm text-gray-500">{order.customer_email || 'No email'}</p>
+                    </td>
+
+                    <td className="px-4 py-5">
+                      <p className="font-medium text-gray-900">{order.delivery_zone || 'N/A'}</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {[order.county, order.area].filter(Boolean).join(' · ') || 'Location pending'}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-500">{order.delivery_point || 'No delivery point'}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.16em] text-gray-400">
+                        {formatDeliveryMethod(order.delivery_method)}
+                      </p>
+                    </td>
+
+                    <td className="px-4 py-5">
+                      <p className="font-medium text-gray-900">{formatPaymentMethod(order.payment_method)}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                            paymentStatusColors[String(order.payment_status || '').toLowerCase()] ||
+                            'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {order.payment_status || 'unknown'}
+                        </span>
+                      </div>
+                      {order.payment_reference && (
+                        <p className="mt-2 text-xs text-gray-500">Ref: {order.payment_reference}</p>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-5">
+                      <p className="font-semibold text-gray-900">{formatKes(order.grand_total_kes)}</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Shipping {formatKes(order.shipping_kes)}
+                      </p>
+                      {(Number(order.discount_amount || 0) > 0 || Number(order.shipping_discount || 0) > 0) && (
+                        <p className="mt-1 text-sm text-emerald-600">
+                          Discount {formatKes(Number(order.discount_amount || 0) + Number(order.shipping_discount || 0))}
+                        </p>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-5">
                       <select
                         value={order.order_status || 'pending'}
                         onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
-                        className={`px-2 py-1 text-xs rounded-full border-0 ${statusColors[order.order_status] || 'bg-gray-100 text-gray-800'}`}
+                        className={`rounded-full border-0 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] ${
+                          orderStatusColors[String(order.order_status || '').toLowerCase()] ||
+                          'bg-gray-100 text-gray-800'
+                        }`}
                       >
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
@@ -156,16 +395,20 @@ export default function Orders() {
                         <option value="payment_failed">Payment Failed</option>
                       </select>
                     </td>
-                    <td className="py-4 px-4 text-sm text-gray-500">
-                      {formatNairobiDate(order.created_at)}
+
+                    <td className="px-4 py-5 text-sm text-gray-500">
+                      <p>{formatNairobiDate(order.created_at)}</p>
+                      {order.paid_at && <p className="mt-1 text-emerald-600">Paid {formatNairobiDate(order.paid_at)}</p>}
                     </td>
-                    <td className="py-4 px-4">
+
+                    <td className="px-6 py-5">
                       <div className="flex items-center justify-end gap-2">
-                        <button 
+                        <button
                           onClick={() => setViewingOrder(order)}
-                          className="p-2 hover:bg-gray-100 rounded-lg"
+                          className="rounded-xl p-2 transition-colors hover:bg-gray-100"
+                          aria-label={`View ${order.order_id}`}
                         >
-                          <Eye className="w-4 h-4 text-gray-600" />
+                          <Eye className="h-4 w-4 text-gray-600" />
                         </button>
                       </div>
                     </td>
@@ -178,121 +421,173 @@ export default function Orders() {
       </div>
 
       {viewingOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Order Details</h2>
-              <button onClick={() => setViewingOrder(null)}>
-                <X className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[24px] bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-gray-100 bg-white px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6F47]">
+                  Order Details
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-gray-900">{viewingOrder.order_id}</h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Created {formatNairobiDateTime(viewingOrder.created_at)}
+                  {viewingOrder.paid_at ? ` · Paid ${formatNairobiDateTime(viewingOrder.paid_at)}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingOrder(null)}
+                className="rounded-xl p-2 transition-colors hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
               </button>
             </div>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-500">Order ID</label>
-                  <p className="font-mono font-semibold">{viewingOrder.order_id}</p>
+
+            <div className="space-y-6 px-6 py-6">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Order Status</p>
+                  <p className="mt-2 text-lg font-semibold capitalize text-gray-900">
+                    {viewingOrder.order_status || 'N/A'}
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm text-gray-500">Date</label>
-                  <p className="font-semibold">{formatNairobiDateTime(viewingOrder.created_at)}</p>
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Payment Status</p>
+                  <p className="mt-2 text-lg font-semibold capitalize text-gray-900">
+                    {viewingOrder.payment_status || 'N/A'}
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm text-gray-500">Status</label>
-                  <p className="font-semibold capitalize">{viewingOrder.order_status}</p>
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Payment Method</p>
+                  <p className="mt-2 text-lg font-semibold text-gray-900">
+                    {formatPaymentMethod(viewingOrder.payment_method)}
+                  </p>
                 </div>
-                <div>
-                  <label className="text-sm text-gray-500">Payment Status</label>
-                  <p className="font-semibold capitalize">{viewingOrder.payment_status}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-500">Customer</label>
-                  <p className="font-semibold">{viewingOrder.customer_name || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-500">Payment Method</label>
-                  <p className="font-semibold capitalize">{viewingOrder.payment_method || 'N/A'}</p>
+                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Final Total</p>
+                  <p className="mt-2 text-lg font-semibold text-[#8B6F47]">
+                    {formatKes(viewingOrder.grand_total_kes)}
+                  </p>
                 </div>
               </div>
 
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-2">Items</h3>
-                <div className="space-y-2">
-                  {viewingOrder.items?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div>
-                        <p className="font-medium">{item.product_name}</p>
-                        <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
-                      </div>
-                      <p className="font-semibold">
-                        {formatKes(item.item_total_kes ?? item.item_total ?? 0)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+              <div className="grid gap-6 xl:grid-cols-2">
+                <section className="rounded-[20px] border border-gray-100 p-5">
+                  <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-[#8B6F47]" />
+                    <h3 className="text-lg font-semibold text-gray-900">Customer & Contact</h3>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-gray-600">
+                    <p><span className="font-medium text-gray-900">Name:</span> {viewingOrder.customer_name || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">Phone:</span> {viewingOrder.customer_phone || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">Email:</span> {viewingOrder.customer_email || 'N/A'}</p>
+                  </div>
+                </section>
+
+                <section className="rounded-[20px] border border-gray-100 p-5">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-[#8B6F47]" />
+                    <h3 className="text-lg font-semibold text-gray-900">Delivery Details</h3>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-gray-600">
+                    <p><span className="font-medium text-gray-900">Zone:</span> {viewingOrder.delivery_zone || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">County:</span> {viewingOrder.county || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">Area / Town / Estate:</span> {viewingOrder.area || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">Exact Delivery Point:</span> {viewingOrder.delivery_point || 'N/A'}</p>
+                    <p><span className="font-medium text-gray-900">Delivery Method:</span> {formatDeliveryMethod(viewingOrder.delivery_method)}</p>
+                    <p><span className="font-medium text-gray-900">ETA:</span> {viewingOrder.delivery_eta || 'N/A'}</p>
+                  </div>
+                </section>
               </div>
 
-              <div className="border-t pt-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-500">Subtotal</span>
-                    <span className="font-semibold">{formatKes(viewingOrder.subtotal_kes)}</span>
+              <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                <section className="rounded-[20px] border border-gray-100 p-5">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-[#8B6F47]" />
+                    <h3 className="text-lg font-semibold text-gray-900">Ordered Products</h3>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-500">Shipping</span>
-                    <span className="font-semibold">{formatKes(viewingOrder.shipping_kes)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-semibold">Grand Total</span>
-                    <span className="text-2xl font-bold text-[#8B6F47]">{formatKes(viewingOrder.grand_total_kes)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {viewingOrder.shipping_address && (
-                <div className="border-t pt-4">
-                  <h3 className="font-semibold mb-2">Shipping Address</h3>
-                  <div className="text-sm text-gray-600">
-                    <p>{viewingOrder.shipping_address.name}</p>
-                    <p>{viewingOrder.shipping_address.email}</p>
-                    <p>{viewingOrder.shipping_address.address}</p>
-                    <p>{viewingOrder.shipping_address.city}, {viewingOrder.shipping_address.country}</p>
-                    <p>{viewingOrder.shipping_address.phone}</p>
-                    <p>{viewingOrder.shipping_address.county} · {viewingOrder.shipping_address.delivery_point}</p>
-                    <p className="capitalize">{viewingOrder.shipping_address.delivery_method} · {viewingOrder.shipping_address.delivery_eta}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="border-t pt-4">
-                <h3 className="font-semibold mb-2">Payment Details</h3>
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p>Method: <span className="font-medium capitalize">{viewingOrder.payment_method || 'N/A'}</span></p>
-                  <p>Status: <span className="font-medium capitalize">{viewingOrder.payment_status || 'N/A'}</span></p>
-                  {viewingOrder.payment_receipt && <p>Receipt: <span className="font-medium">{viewingOrder.payment_receipt}</span></p>}
-                  {viewingOrder.payment_details?.phone_number && <p>Phone: <span className="font-medium">{viewingOrder.payment_details.phone_number}</span></p>}
-                </div>
-              </div>
-
-              {viewingOrder.events?.length > 0 && (
-                <div className="border-t pt-4">
-                  <h3 className="font-semibold mb-2">Order Timeline</h3>
-                  <div className="space-y-3">
-                    {viewingOrder.events.slice().reverse().map((event: any, idx: number) => (
-                      <div key={`${event.created_at}-${idx}`} className="rounded-lg bg-gray-50 p-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="font-medium text-sm text-gray-900">{event.message}</p>
-                          <span className="text-xs uppercase tracking-[0.2em] text-gray-400">
-                            {event.category || event.type}
-                          </span>
+                  <div className="mt-4 space-y-3">
+                    {(viewingOrder.items || []).map((item, idx) => (
+                      <div key={`${item.product_name}-${idx}`} className="flex items-center justify-between rounded-2xl bg-gray-50 px-4 py-4">
+                        <div>
+                          <p className="font-medium text-gray-900">{item.product_name || 'Product'}</p>
+                          <p className="mt-1 text-sm text-gray-500">
+                            Qty {Number(item.quantity || 0)} · {formatKes(item.price_per_item_kes)}
+                          </p>
                         </div>
-                        <div className="mt-1 text-xs text-gray-500">
-                          {formatNairobiDateTime(event.created_at)} · {event.actor || 'system'}
-                        </div>
+                        <p className="font-semibold text-gray-900">{formatKes(item.item_total_kes)}</p>
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
+
+                <section className="space-y-6">
+                  <div className="rounded-[20px] border border-gray-100 p-5">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-[#8B6F47]" />
+                      <h3 className="text-lg font-semibold text-gray-900">Payment Details</h3>
+                    </div>
+                    <div className="mt-4 space-y-2 text-sm text-gray-600">
+                      <p><span className="font-medium text-gray-900">Method:</span> {formatPaymentMethod(viewingOrder.payment_method)}</p>
+                      <p><span className="font-medium text-gray-900">Status:</span> {viewingOrder.payment_status || 'N/A'}</p>
+                      <p><span className="font-medium text-gray-900">Reference:</span> {viewingOrder.payment_reference || 'N/A'}</p>
+                      <p><span className="font-medium text-gray-900">Phone:</span> {viewingOrder.payment_phone || viewingOrder.payment_details?.phone_number || 'N/A'}</p>
+                      <p><span className="font-medium text-gray-900">Paid At:</span> {viewingOrder.paid_at ? formatNairobiDateTime(viewingOrder.paid_at) : 'Pending payment'}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[20px] border border-gray-100 p-5">
+                    <h3 className="text-lg font-semibold text-gray-900">Totals</h3>
+                    <div className="mt-4 space-y-3 text-sm text-gray-600">
+                      <div className="flex items-center justify-between">
+                        <span>Subtotal</span>
+                        <span className="font-semibold text-gray-900">{formatKes(viewingOrder.subtotal_kes)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Delivery Fee</span>
+                        <span className="font-semibold text-gray-900">{formatKes(viewingOrder.shipping_kes)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Discount</span>
+                        <span className="font-semibold text-emerald-600">
+                          -{formatKes(Number(viewingOrder.discount_amount || 0) + Number(viewingOrder.shipping_discount || 0))}
+                        </span>
+                      </div>
+                      {viewingOrder.promo_code && (
+                        <div className="flex items-center justify-between">
+                          <span>Promo Code</span>
+                          <span className="font-semibold text-gray-900">{viewingOrder.promo_code}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between border-t border-gray-100 pt-3 text-base">
+                        <span className="font-semibold text-gray-900">Final Total</span>
+                        <span className="font-bold text-[#8B6F47]">{formatKes(viewingOrder.grand_total_kes)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              {viewingOrder.events && viewingOrder.events.length > 0 && (
+                <section className="rounded-[20px] border border-gray-100 p-5">
+                  <h3 className="text-lg font-semibold text-gray-900">Order Timeline</h3>
+                  <div className="mt-4 space-y-3">
+                    {viewingOrder.events.slice().reverse().map((event, idx) => (
+                      <div key={`${event.created_at}-${idx}`} className="rounded-2xl bg-gray-50 px-4 py-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="font-medium text-gray-900">{event.message}</p>
+                          <span className="text-[11px] uppercase tracking-[0.16em] text-gray-400">
+                            {event.category || event.type}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                          {event.created_at ? formatNairobiDateTime(event.created_at) : 'Unknown time'}
+                          {' · '}
+                          {event.actor || 'system'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
             </div>
           </div>
