@@ -4,6 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   readonly VITE_GOOGLE_CLIENT_ID?: string;
   readonly VITE_GOOGLE_ALLOWED_EMAILS?: string;
+  readonly VITE_ENABLE_LOCAL_GOOGLE_AUTH?: string;
 }
 
 interface ImportMeta {
