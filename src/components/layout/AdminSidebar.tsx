@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '../../context/AdminAuthContext';
 import {
-  LayoutDashboard, BarChart3, Package, Warehouse, ShoppingCart,
+  LayoutDashboard, Package, Warehouse, ShoppingCart,
   Users, Tag, Star, CreditCard, Truck, FileText,
   Headphones, Shield, Settings
 } from 'lucide-react';
@@ -10,7 +10,6 @@ const BRAND_LOGO_URL = "/queen-koba-logo.jpg";
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
-  { icon: BarChart3, label: 'Analytics', path: '/admin/analytics' },
   { icon: Package, label: 'Products', path: '/admin/products' },
   { icon: Warehouse, label: 'Inventory', path: '/admin/inventory' },
   { icon: ShoppingCart, label: 'Orders', path: '/admin/orders' },

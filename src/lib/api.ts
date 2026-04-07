@@ -74,12 +74,35 @@ export const api = {
     return request('/admin/auth/me');
   },
 
-  getDashboardKPIs: async () => {
-    return request('/admin/dashboard/kpis');
+  getDashboardKPIs: async (days?: number) => {
+    const query = buildQueryString({ days });
+    return request(`/admin/dashboard/kpis${query ? `?${query}` : ''}`);
   },
 
-  getAnalyticsOverview: async () => {
-    return request('/admin/analytics/overview');
+  getAnalyticsOverview: async (days?: number) => {
+    const query = buildQueryString({ days });
+    return request(`/admin/analytics/overview${query ? `?${query}` : ''}`);
+  },
+
+  getActivityFeed: async (limit?: number) => {
+    const query = buildQueryString({ limit });
+    return request(`/admin/analytics/activity${query ? `?${query}` : ''}`);
+  },
+
+  getInventoryAnalytics: async () => {
+    return request('/admin/analytics/inventory');
+  },
+
+  getCustomerAnalytics: async (days?: number) => {
+    const query = buildQueryString({ days });
+    return request(`/admin/analytics/customers${query ? `?${query}` : ''}`);
+  },
+
+  trackAnalyticsEvent: async (eventType: string, eventData: any, sessionId?: string) => {
+    return request('/analytics/track', {
+      method: 'POST',
+      body: JSON.stringify({ event_type: eventType, event_data: eventData, session_id: sessionId }),
+    });
   },
 
   getProducts: async (params?: any) => {

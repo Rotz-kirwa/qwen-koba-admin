@@ -4,7 +4,6 @@ import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
 import AdminLayout from './components/layout/AdminLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import Analytics from './pages/Analytics';
 import Products from './pages/Products';
 import Promotions from './pages/Promotions';
 import Orders from './pages/Orders';
@@ -39,7 +38,6 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
-              <Route path="analytics" element={<Analytics />} />
               <Route path="products" element={<Products />} />
               <Route path="inventory" element={<Inventory />} />
               <Route path="orders" element={<Orders />} />

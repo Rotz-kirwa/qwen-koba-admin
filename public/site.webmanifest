@@ -7,22 +7,22 @@
   "display": "standalone",
   "icons": [
     {
-      "src": "/favicon-16x16.png?v=20260325",
+      "src": "/queen-koba-logo.jpg",
       "sizes": "16x16",
-      "type": "image/png"
+      "type": "image/jpeg"
     },
     {
-      "src": "/favicon-32x32.png?v=20260325",
+      "src": "/queen-koba-logo.jpg",
       "sizes": "32x32",
-      "type": "image/png"
+      "type": "image/jpeg"
     },
     {
-      "src": "/apple-touch-icon.png?v=20260325",
+      "src": "/apple-touch-icon.png",
       "sizes": "180x180",
       "type": "image/png"
     },
     {
-      "src": "/queen-koba-logo.jpg?v=20260325",
+      "src": "/queen-koba-logo.jpg",
       "sizes": "736x736",
       "type": "image/jpeg"
     }
