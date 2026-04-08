@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Products() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [addingProduct, setAddingProduct] = useState(false);
@@ -18,6 +20,24 @@ export default function Products() {
     on_sale: false,
   });
   const queryClient = useQueryClient();
+
+  const openAddProductModal = () => {
+    setAddingProduct(true);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.set('action', 'new');
+    setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  const closeAddProductModal = () => {
+    setAddingProduct(false);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('action');
+    setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  useEffect(() => {
+    setAddingProduct(searchParams.get('action') === 'new');
+  }, [searchParams]);
   
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
@@ -36,7 +56,7 @@ export default function Products() {
     mutationFn: (data: any) => api.createProduct(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      setAddingProduct(false);
+      closeAddProductModal();
       setNewProduct({ 
         name: '', 
         description: '', 
@@ -154,7 +174,7 @@ export default function Products() {
           <p className="text-gray-500 mt-1">Manage your product catalog</p>
         </div>
         <button 
-          onClick={() => setAddingProduct(true)}
+          onClick={openAddProductModal}
           className="admin-btn-primary flex items-center gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -345,7 +365,7 @@ export default function Products() {
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Add New Product</h2>
-              <button onClick={() => setAddingProduct(false)}>
+              <button onClick={closeAddProductModal}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -477,7 +497,7 @@ export default function Products() {
                   {createMutation.isPending ? 'Creating...' : 'Create Product'}
                 </button>
                 <button
-                  onClick={() => setAddingProduct(false)}
+                  onClick={closeAddProductModal}
                   className="flex-1 border border-gray-300 py-2 rounded-lg hover:bg-gray-50"
                 >
                   Cancel

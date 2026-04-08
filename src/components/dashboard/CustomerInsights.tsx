@@ -22,6 +22,8 @@ export function CustomerInsights({
   locations,
   className = ''
 }: CustomerInsightsProps) {
+  const safeRepeatCustomers = Number.isFinite(repeatCustomers) ? repeatCustomers : 0;
+
   return (
     <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-6 ${className}`}>
       <div className="flex items-center justify-between mb-6">
@@ -51,7 +53,7 @@ export function CustomerInsights({
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-600">Repeat Customers</p>
-                <p className="text-xl font-bold text-gray-900">{repeatCustomers}%</p>
+                <p className="text-xl font-bold text-gray-900">{safeRepeatCustomers}%</p>
               </div>
             </div>
           </div>
@@ -59,45 +61,57 @@ export function CustomerInsights({
 
         <div>
           <h4 className="text-sm font-semibold text-gray-900 mb-3">Top Customers</h4>
-          <div className="space-y-2">
-            {topCustomers.map((customer, index) => (
-              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{customer.name}</p>
-                  <p className="text-xs text-gray-600">{customer.orders} orders</p>
+          {topCustomers.length > 0 ? (
+            <div className="space-y-2">
+              {topCustomers.map((customer, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{customer.name}</p>
+                    <p className="text-xs text-gray-600">{customer.orders} orders</p>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    KSh {Number(customer.spent || 0).toLocaleString()}
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-gray-900">
-                  KSh {customer.spent.toLocaleString()}
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-4 text-sm text-gray-500">
+              Top customers will appear here once purchases start coming in.
+            </div>
+          )}
         </div>
       </div>
 
       <div className="border-t border-gray-100 pt-4">
         <h4 className="text-sm font-semibold text-gray-900 mb-3">Customer Locations</h4>
-        <div className="space-y-2">
-          {locations.map((location, index) => (
-            <div key={index} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-700">{location.country}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-20 bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-amber-500 h-2 rounded-full"
-                    style={{ width: `${location.percentage}%` }}
-                  />
+        {locations.length > 0 ? (
+          <div className="space-y-2">
+            {locations.map((location, index) => (
+              <div key={index} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">{location.country}</span>
                 </div>
-                <span className="text-sm font-medium text-gray-900 w-10 text-right">
-                  {location.percentage}%
-                </span>
+                <div className="flex items-center gap-2">
+                  <div className="w-20 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-amber-500 h-2 rounded-full"
+                      style={{ width: `${location.percentage}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 w-10 text-right">
+                    {location.percentage}%
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-4 text-sm text-gray-500">
+            Customer location insights will appear here after more orders are placed.
+          </div>
+        )}
       </div>
     </div>
   );

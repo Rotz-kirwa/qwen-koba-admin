@@ -23,6 +23,8 @@ const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefin
 const ADMIN_TOKEN_KEY = 'admin_token';
 const ADMIN_USER_KEY = 'admin_user';
 
+const getStoredToken = () => localStorage.getItem(ADMIN_TOKEN_KEY);
+
 const readStoredAdmin = () => {
   const raw = localStorage.getItem(ADMIN_USER_KEY);
   if (!raw) {
@@ -38,8 +40,8 @@ const readStoredAdmin = () => {
 };
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AdminUser | null>(() => readStoredAdmin());
+  const [loading, setLoading] = useState(() => Boolean(getStoredToken() && !readStoredAdmin()));
 
   const persistSession = useCallback((token: string, nextUser: AdminUser) => {
     localStorage.setItem(ADMIN_TOKEN_KEY, token);
@@ -58,7 +60,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     const bootstrapSession = async () => {
-      const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+      const token = getStoredToken();
       const storedUser = readStoredAdmin();
 
       if (!token) {
@@ -69,8 +71,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (storedUser && !cancelled) {
-        setUser(storedUser);
+      if (storedUser) {
+        if (!cancelled) {
+          setUser(storedUser);
+          setLoading(false);
+        }
+      } else if (!cancelled) {
+        setLoading(true);
       }
 
       try {
